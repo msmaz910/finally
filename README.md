@@ -2,18 +2,13 @@
 
 A visually stunning AI-powered trading workstation that streams live market data, simulates portfolio trading, and integrates an LLM chat assistant that can analyze positions and execute trades via natural language.
 
-Built entirely by coding agents as a capstone project for an agentic AI coding course.
+Built entirely by coding agents as a capstone project for an agentic AI coding course. Full specification lives in [`planning/PLAN.md`](planning/PLAN.md).
 
-## Features
+## Status
 
-- **Live price streaming** via SSE with green/red flash animations
-- **Simulated portfolio** — $10k virtual cash, market orders, instant fills
-- **Portfolio visualizations** — heatmap (treemap), P&L chart, positions table
-- **AI chat assistant** — analyzes holdings, suggests and auto-executes trades
-- **Watchlist management** — track tickers manually or via AI
-- **Dark terminal aesthetic** — Bloomberg-inspired, data-dense layout
+🚧 **In progress.** The market data subsystem (live price simulator + streaming) is complete — see [`planning/MARKET_DATA_SUMMARY.md`](planning/MARKET_DATA_SUMMARY.md). The frontend, portfolio, and AI chat layers are not yet built.
 
-## Architecture
+## Planned Architecture
 
 Single Docker container serving everything on port 8000:
 
@@ -23,38 +18,25 @@ Single Docker container serving everything on port 8000:
 - **AI**: LiteLLM → OpenRouter (Cerebras inference) with structured outputs
 - **Market data**: Built-in GBM simulator (default) or Massive API (optional)
 
-## Quick Start
+## Backend Development (current)
 
 ```bash
-# Clone and configure
-cp .env.example .env
-# Add your OPENROUTER_API_KEY to .env
-
-# Run with Docker
-docker build -t finally .
-docker run -v finally-data:/app/db -p 8000:8000 --env-file .env finally
-
-# Open http://localhost:8000
+cd backend
+uv sync --dev
+uv run pytest
 ```
 
-## Environment Variables
-
-| Variable | Required | Description |
-|---|---|---|
-| `OPENROUTER_API_KEY` | Yes | OpenRouter API key for AI chat |
-| `MASSIVE_API_KEY` | No | Massive (Polygon.io) key for real market data; omit to use simulator |
-| `LLM_MOCK` | No | Set `true` for deterministic mock LLM responses (testing) |
+See [`backend/README.md`](backend/README.md) for details.
 
 ## Project Structure
 
 ```
 finally/
-├── frontend/    # Next.js static export
-├── backend/     # FastAPI uv project
-├── planning/    # Project documentation and agent contracts
-├── test/        # Playwright E2E tests
-├── db/          # SQLite volume mount (runtime)
-└── scripts/     # Start/stop helpers
+├── backend/     # FastAPI uv project (market data complete; rest in progress)
+├── frontend/    # Next.js static export (not yet started)
+├── planning/    # Project spec and agent contracts
+├── test/        # Playwright E2E tests (not yet started)
+└── db/          # SQLite volume mount (runtime)
 ```
 
 ## License

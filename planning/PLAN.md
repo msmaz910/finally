@@ -171,6 +171,10 @@ Both the simulator and the Massive client implement the same abstract interface.
 - SSE streams read from this cache and push updates to connected clients
 - This architecture supports future multi-user scenarios without changes to the data layer
 
+### Tracked Tickers = Watchlist ∪ Held Positions
+
+The market data source must track every watchlist ticker **and** every ticker with an open position, not just the watchlist. Removing a ticker from the watchlist must not call `MarketDataSource.remove_ticker()` if a position is still open for it — doing so would drop its price from the cache and break portfolio valuation for a held ticker with no price. Only call `remove_ticker()` when a ticker is in neither the watchlist nor an open position (i.e. on watchlist removal with no position, or when a position is fully sold and the ticker isn't separately watchlisted). A ticker bought via chat or a trade that isn't already on the watchlist must be added to the tracked set the same way.
+
 ### SSE Streaming
 
 - Endpoint: `GET /api/stream/prices`
@@ -265,7 +269,7 @@ All tables include a `user_id` column defaulting to `"default"`. This is hardcod
 |--------|------|-------------|
 | GET | `/api/watchlist` | Current watchlist tickers with latest prices |
 | POST | `/api/watchlist` | Add a ticker: `{ticker}` |
-| DELETE | `/api/watchlist/{ticker}` | Remove a ticker |
+| DELETE | `/api/watchlist/{ticker}` | Remove a ticker from the watchlist (see [Tracked Tickers](#tracked-tickers--watchlist--held-positions): if a position is still open, the ticker keeps its price tracked and only leaves the watchlist table) |
 
 ### Chat
 | Method | Path | Description |
@@ -454,3 +458,25 @@ The container is designed to deploy to AWS App Runner, Render, or any container 
 - Portfolio visualization: heatmap renders with correct colors, P&L chart has data points
 - AI chat (mocked): send a message, receive a response, trade execution appears inline
 - SSE resilience: disconnect and verify reconnection
+
+---
+
+## 13. Doc Review Notes (2026-09-27)
+
+### Questions / clarifications needed
+
+1. **Chat history endpoint is missing.** Section 8 only lists `POST /api/chat`, but `chat_messages` stores full history (Section 7). How does the frontend repopulate the conversation panel on page load/refresh? Suggest adding `GET /api/chat/history`.
+
+2. **`docker-compose.yml` vs. start scripts — is it still needed?** Section 4 lists `docker-compose.yml` as an "optional convenience wrapper," but Section 11 already gives a raw `docker run` command plus `scripts/start_mac.sh` / `start_windows.ps1` that wrap Docker for the user. Keeping all three ways to launch the same container means more to keep in sync for not much benefit.
+
+3. **Section 6 (SSE) doesn't match what was actually built.** It describes the server pushing updates "at a regular cadence (~500ms)" for all tickers. `MARKET_DATA_SUMMARY.md` says the already-completed `PriceCache` uses version-based change detection — it pushes on change, not a blind interval poll. Worth updating this section so the plan reflects the real implementation for whoever reads it next.
+
+4. **How much conversation history goes to the LLM?** Section 9, step 2 says the backend "loads recent conversation history" but doesn't say how much (last N messages? a token budget?). Worth pinning a number so the prompt doesn't grow unbounded over a long chat session.
+
+5. **What happens when the LLM proposes an invalid ticker?** Section 9 covers trade validation (insufficient cash/shares) but not the case where the LLM's `trades` or `watchlist_changes` reference a ticker that doesn't exist or isn't tradeable. Should probably be validated and surfaced back to the LLM the same way a failed trade is.
+
+6. **No fallback for LLM call failures.** If the OpenRouter/Cerebras call itself times out, rate-limits, or returns something that fails structured-output parsing, there's no documented behavior. Even a one-line policy (e.g., "return a friendly error message, log it, don't retry") would close this gap.
+
+### Small inaccuracy
+
+- Section 10 calls Recharts a "canvas-based charting library." Recharts is SVG-based — Lightweight Charts is the canvas-based option in that same sentence. Worth a quick fix so the Frontend Engineer agent doesn't pick a library expecting canvas performance it won't get.

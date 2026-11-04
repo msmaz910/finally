@@ -1,0 +1,18 @@
+{
+    "name": "michelle-tools",
+    "owner": {
+        "name": "Michelle",
+        "email": "michelle.mazzotta@gmail.com"
+    },
+    "plugins": [
+        {
+            "name": "independent-reviewer",
+            "source": "./independent-reviewer",
+            "description": "Carry out an independent review of all changes since the last commit",
+            "version": "1.0.0",
+            "author": {
+                "name": "Michelle"
+            }
+        }
+    ]
+}
