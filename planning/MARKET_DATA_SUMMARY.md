@@ -1,6 +1,6 @@
 # Market Data Backend — Summary
 
-**Status:** Complete, tested, reviewed, all issues resolved.
+**Status:** Working and tested. The simulator is ready for downstream use. The Massive (real data) source now works, after the fixes in PR #4. Some second-review findings are still open (see below and `MARKET_DATA_REVIEW.md`). `MARKET_DATA_DESIGN.md` describes the target state; most of its Section 14 changes are not applied yet.
 
 ## What Was Built
 
@@ -44,22 +44,40 @@ MarketDataSource (ABC)
 
 ## Test Suite
 
-**73 tests, all passing.** 6 test modules in `backend/tests/market/`.
+**83 tests, all passing.** 7 test modules in `backend/tests/market/` (as of 2026-11-06).
 
 | Module | Tests | Coverage |
 |--------|-------|----------|
 | test_models.py | 11 | models.py: 100% |
-| test_cache.py | 13 | cache.py: 100% |
-| test_simulator.py | 17 | simulator.py: 98% |
+| test_cache.py | 15 | cache.py: 100% |
+| test_simulator.py | 19 | simulator.py: 98% |
 | test_simulator_source.py | 10 | (integration tests) |
 | test_factory.py | 7 | factory.py: 100% |
-| test_massive.py | 13 | massive_client.py: 56% (expected — API methods mocked) |
+| test_massive.py | 19 | massive_client.py: 95% (built with real `TickerSnapshot` SDK models) |
+| test_stream.py | 2 | stream.py: 42% (router only; SSE generator untested) |
 
-Overall coverage: 84%.
+Overall coverage: 92%.
 
-## Code Review & Fixes Applied
+## Second Code Review (2026-11-06)
 
-A comprehensive code review identified 7 issues. All were resolved:
+Full findings are in `MARKET_DATA_REVIEW.md`. Each fix below has a test that failed before the change (PR #4):
+
+1. **Massive never cached a price (P1)**: the code read `last_trade.timestamp`, which the SDK doesn't have. New `extract_price()` uses `sip_timestamp` (nanoseconds) and falls back to minute/day/previous-day close (Starter plan has no last trade). The old tests used `MagicMock`, which hid the bug.
+2. **SSE router shared across calls (P1)**: `create_stream_router()` now builds a new router on each call.
+3. **Massive poll race (P2)**: a ticker removed mid-poll is no longer written back to the cache.
+4. **Cache removal invisible to SSE (P2)**: `PriceCache.remove()` now bumps `version`.
+
+**Still open:**
+
+- The simulator doesn't uppercase tickers (Massive does).
+- `SimulatorDataSource.add_ticker()` before `start()` is dropped.
+- No invalid-ticker signal from `add_ticker()`. Decide this before building the watchlist API.
+- No SSE heartbeat, and no daily change % field.
+- Small P3 cleanups (deprecated `conftest.py` fixture, `rich` as a core dependency).
+
+## First Code Review & Fixes Applied
+
+The first code review identified 7 issues. All were resolved:
 
 1. **pyproject.toml build config** — added `[tool.hatch.build.targets.wheel] packages = ["app"]`
 2. **Lazy imports removed** — `massive` is a core dependency; imports moved to top level
