@@ -6,12 +6,35 @@ import asyncio
 import logging
 
 from massive import RESTClient
-from massive.rest.models import SnapshotMarketType
+from massive.rest.models import SnapshotMarketType, TickerSnapshot
 
 from .cache import PriceCache
 from .interface import MarketDataSource
 
 logger = logging.getLogger(__name__)
+
+NANOS_PER_SECOND = 1_000_000_000
+
+
+def extract_price(snap: TickerSnapshot) -> tuple[float, float | None] | None:
+    """Return (price, unix_seconds) from a snapshot, or None if it has no price.
+
+    Falls back through the fields each plan provides: last trade (Developer+),
+    then the minute, day and previous-day bar closes (Starter, or before the open).
+    Snapshot timestamps are nanoseconds; None means "unknown, use now".
+    """
+    trade = snap.last_trade
+    if trade and trade.price:
+        return trade.price, _nanos_to_seconds(trade.sip_timestamp)
+    for bar in (snap.min, snap.day, snap.prev_day):
+        if bar and bar.close:
+            return bar.close, _nanos_to_seconds(snap.updated)
+    return None
+
+
+def _nanos_to_seconds(nanos: int | None) -> float | None:
+    """Convert a nanosecond timestamp to Unix seconds, keeping None as None."""
+    return nanos / NANOS_PER_SECOND if nanos else None
 
 
 class MassiveDataSource(MarketDataSource):
@@ -97,22 +120,13 @@ class MassiveDataSource(MarketDataSource):
             snapshots = await asyncio.to_thread(self._fetch_snapshots)
             processed = 0
             for snap in snapshots:
-                try:
-                    price = snap.last_trade.price
-                    # Massive timestamps are Unix milliseconds → convert to seconds
-                    timestamp = snap.last_trade.timestamp / 1000.0
-                    self._cache.update(
-                        ticker=snap.ticker,
-                        price=price,
-                        timestamp=timestamp,
-                    )
-                    processed += 1
-                except (AttributeError, TypeError) as e:
-                    logger.warning(
-                        "Skipping snapshot for %s: %s",
-                        getattr(snap, "ticker", "???"),
-                        e,
-                    )
+                result = extract_price(snap)
+                if result is None:
+                    logger.warning("Skipping snapshot for %s: no price data", snap.ticker)
+                    continue
+                price, timestamp = result
+                self._cache.update(ticker=snap.ticker, price=price, timestamp=timestamp)
+                processed += 1
             logger.debug("Massive poll: updated %d/%d tickers", processed, len(self._tickers))
 
         except Exception as e:
