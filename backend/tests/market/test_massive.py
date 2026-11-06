@@ -225,3 +225,42 @@ class TestMassiveDataSource:
         assert cache.get_price("AAPL") == 190.50
 
         await source.stop()
+
+
+@pytest.mark.asyncio
+class TestMassivePollRace:
+    """A poll must not resurrect tickers removed while its request was in flight."""
+
+    async def test_ticker_removed_mid_poll_is_not_written(self):
+        """Results for a ticker removed during the request are dropped."""
+        cache = PriceCache()
+        source = MassiveDataSource(api_key="test-key", price_cache=cache)
+        source._tickers = ["AAPL", "GOOGL"]
+        source._client = MagicMock()
+
+        def fetch_while_googl_is_removed(tickers):
+            source._tickers = ["AAPL"]  # remove_ticker("GOOGL") ran during the request
+            return [
+                _make_snapshot("AAPL", 190.50, 1707580800_000_000_000),
+                _make_snapshot("GOOGL", 175.25, 1707580800_000_000_000),
+            ]
+
+        with patch.object(source, "_fetch_snapshots", side_effect=fetch_while_googl_is_removed):
+            await source._poll_once()
+
+        assert cache.get_price("AAPL") == 190.50
+        assert cache.get_price("GOOGL") is None
+
+    async def test_fetch_receives_a_copy_of_tickers(self):
+        """The worker thread gets its own list, so add_ticker can't mutate it mid-request."""
+        cache = PriceCache()
+        source = MassiveDataSource(api_key="test-key", price_cache=cache)
+        source._tickers = ["AAPL"]
+        source._client = MagicMock()
+
+        with patch.object(source, "_fetch_snapshots", return_value=[]) as fetch:
+            await source._poll_once()
+
+        (tickers,) = fetch.call_args.args
+        assert tickers == ["AAPL"]
+        assert tickers is not source._tickers

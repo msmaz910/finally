@@ -4,7 +4,7 @@
 **Scope:** `backend/app/market/` (8 modules), `backend/tests/` (73 tests), checked against `PLAN.md`, `MARKET_DATA_SUMMARY.md`, `MARKET_INTERFACE.md`, `MARKET_SIMULATOR.md`, `MASSIVE_API.md` and `MARKET_DATA_DESIGN.md`.
 **Method:** I read every source and test file, ran the suite with coverage and lint, then reproduced each suspected bug with a script that uses the real code and the real `massive` SDK models (no mocks for the parts under test).
 
-> **Update 2026-11-06:** P1-1, P1-2 and P2-2 are **fixed** (each with a test that failed before the fix). Suite: 81 passed, 92% coverage, lint clean. The other findings are still open.
+> **Update 2026-11-06:** P1-1, P1-2, P2-1 and P2-2 are **fixed** (each with a test that failed before the fix). Suite: 83 passed, 92% coverage, lint clean. The other findings are still open.
 
 ---
 
@@ -18,7 +18,7 @@ The **Massive (real data) path does not work**: it never writes a price to the c
 |---|---|
 | Models, cache, factory | Good; two small cache fixes needed |
 | GBM simulator | Good |
-| Massive client | ~~**Broken** (P1)~~ Fixed; race condition still open |
+| Massive client | ~~**Broken** (P1), race condition~~ Both fixed |
 | SSE stream | ~~Duplicate-route trap~~ Fixed; generator still untested |
 | Tests | All pass; Massive tests now use real SDK models; SSE generator has no tests |
 
@@ -88,7 +88,9 @@ same router object: True | routes: ['/api/stream/prices', '/api/stream/prices']
 
 FastAPI matches the first route, so a second app (for example, a second `TestClient` app in the API tests) silently streams from the **first** app's cache. This will cause confusing test failures once the API layer is built. **Fix:** create the `APIRouter` inside the function (design §14 row 9).
 
-### P2-1. Massive: a ticker removed during a poll comes back as a stale "zombie"
+### P2-1. Massive: a ticker removed during a poll comes back as a stale "zombie" — FIXED
+
+> **Fixed:** `_poll_once` passes a copy of the ticker list to the worker thread and skips results for tickers no longer tracked. Two new tests in `test_massive.py` (`TestMassivePollRace`). The repro now shows GOOGL is `None` after a mid-poll removal.
 
 `_poll_once` awaits the network call in a thread. If `remove_ticker()` runs during that await, the results loop then writes the removed ticker back into the cache. The poller no longer tracks it, so it stays in the cache **forever** with a frozen price, and it shows in the SSE stream and the LLM context.
 
@@ -174,7 +176,7 @@ Ordered so each step is small and can be checked on its own:
 1. ~~**Massive fix:** add `extract_price()` and rewrite `test_massive.py` with real SDK models.~~ Done.
 2. ~~**Router fix:** move `APIRouter(...)` inside `create_stream_router`.~~ Done. Still to do: extend `test_stream.py` to cover the generator (first event, no resend on unchanged version, exit on disconnect).
 3. ~~**Cache:** `remove()` bumps version.~~ Done. Still to do: the `is not None` timestamp check (P3-4).
-4. **Massive race:** copy the ticker list for the thread, and skip removed tickers.
+4. ~~**Massive race:** copy the ticker list for the thread, and skip removed tickers.~~ Done.
 5. **Ticker normalization** shared by both sources, plus contract tests run against both.
 6. **Decide** on invalid-ticker handling (`add_ticker -> bool`) before building the watchlist API.
 7. Cleanups (P3), then update `MARKET_DATA_SUMMARY.md`.

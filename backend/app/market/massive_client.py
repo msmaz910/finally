@@ -117,9 +117,11 @@ class MassiveDataSource(MarketDataSource):
         try:
             # The Massive RESTClient is synchronous — run in a thread to
             # avoid blocking the event loop.
-            snapshots = await asyncio.to_thread(self._fetch_snapshots)
+            snapshots = await asyncio.to_thread(self._fetch_snapshots, list(self._tickers))
             processed = 0
             for snap in snapshots:
+                if snap.ticker not in self._tickers:
+                    continue  # Removed while the request was in flight
                 result = extract_price(snap)
                 if result is None:
                     logger.warning("Skipping snapshot for %s: no price data", snap.ticker)
@@ -134,9 +136,9 @@ class MassiveDataSource(MarketDataSource):
             # Don't re-raise — the loop will retry on the next interval.
             # Common failures: 401 (bad key), 429 (rate limit), network errors.
 
-    def _fetch_snapshots(self) -> list:
+    def _fetch_snapshots(self, tickers: list[str]) -> list[TickerSnapshot]:
         """Synchronous call to the Massive REST API. Runs in a thread."""
         return self._client.get_snapshot_all(
             market_type=SnapshotMarketType.STOCKS,
-            tickers=self._tickers,
+            tickers=tickers,
         )
