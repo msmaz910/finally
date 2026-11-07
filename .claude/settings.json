@@ -1,5 +1,3 @@
 {
-  "enabledPlugins": {
-    "independent-reviewer@michelle-tools": true
-  }
+  "enabledPlugins": {}
 }
